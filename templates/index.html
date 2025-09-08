@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JLL - Combinador de Presentaciones</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .jll-header {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+        }
+        .building-card {
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+        .building-card:hover {
+            border-color: #2a5298;
+            transform: translateY(-2px);
+        }
+        .building-card.selected {
+            border-color: #198754;
+            background-color: #f8fff9;
+        }
+        .loading {
+            display: none;
+        }
+        .status-success { color: #198754; }
+        .status-error { color: #dc3545; }
+        .status-warning { color: #fd7e14; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark jll-header">
+        <div class="container">
+            <span class="navbar-brand mb-0 h1">
+                <i class="fas fa-building"></i> JLL - Combinador de Presentaciones
+            </span>
+            <span class="text-light">
+                <i class="fas fa-users"></i> Herramienta Colaborativa
+            </span>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-md-10 mx-auto">
+                
+                <!-- Configuración Principal -->
+                <div class="card shadow">
+                    <div class="card-header bg-primary text-white">
+                        <h4><i class="fas fa-cog"></i> Configuración de Carpeta OneDrive</h4>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <label for="folderPath" class="form-label">
+                                    <i class="fas fa-folder-open"></i> Ruta de Carpeta
+                                </label>
+                                <input type="text" class="form-control" id="folderPath" 
+                                       placeholder="C:\Users\TuUsuario\OneDrive\JLL Presentations"
+                                       value="">
+                                <small class="form-text text-muted">
+                                    📁 Especifica la ruta completa a tu carpeta de presentaciones sincronizada
+                                </small>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="language" class="form-label">
+                                    <i class="fas fa-language"></i> Idioma
+                                </label>
+                                <select class="form-select" id="language">
+                                    <option value="ESP" selected>🇪🇸 Español (NF ESP)</option>
+                                    <option value="ENG">🇺🇸 Inglés (NF ENG)</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-3">
+                            <button onclick="scanFolder()" class="btn btn-primary btn-lg">
+                                <i class="fas fa-search"></i> Escanear Carpeta
+                            </button>
+                            <div class="loading spinner-border spinner-border-sm ms-2" role="status">
+                                <span class="visually-hidden">Cargando...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Resultados -->
+                <div id="results" class="mt-4"></div>
+                
+                <!-- Status Messages -->
+                <div id="statusMessages" class="mt-3"></div>
+
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let availableBuildings = [];
+        let selectedBuildings = new Set();
+
+        // Función principal para escanear carpeta
+        async function scanFolder() {
+            const folderPath = document.getElementById('folderPath').value.trim();
+            const language = document.getElementById('language').value;
+            
+            if (!folderPath) {
+                showMessage('⚠️ Por favor ingresa la ruta de la carpeta', 'warning');
+                return;
+            }
+
+            showLoading(true);
+            showMessage('🔍 Escaneando carpeta...', 'info');
+
+            try {
+                const response = await fetch('/scan-folder', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({folder_path: folderPath})
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    availableBuildings = data.presentations[language] || [];
+                    showBuildings(availableBuildings, language);
+                    showMessage(`✅ Encontradas ${availableBuildings.length} presentaciones en ${language}`, 'success');
+                } else {
+                    showMessage('❌ Error: ' + data.error, 'error');
+                    document.getElementById('results').innerHTML = '';
+                }
+            } catch (error) {
+                showMessage('❌ Error de conexión: ' + error.message, 'error');
+                document.getElementById('results').innerHTML = '';
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Mostrar edificios disponibles
+        function showBuildings(buildings, language) {
+            const resultsDiv = document.getElementById('results');
+            
+            if (buildings.length === 0) {
+                resultsDiv.innerHTML = `
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>No se encontraron presentaciones</strong><br>
+                        Verifica que la carpeta contenga archivos con formato "Nombre NF ${language}.pptx"
+                    </div>
+                `;
+                return;
+            }
+
+            let html = `
+                <div class="card shadow">
+                    <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                        <h4><i class="fas fa-building"></i> Edificios Disponibles (${buildings.length})</h4>
+                        <div>
+                            <button onclick="selectAll()" class="btn btn-light btn-sm me-2">Seleccionar Todos</button>
+                            <button onclick="clearAll()" class="btn btn-outline-light btn-sm">Limpiar</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="clientName" class="form-label">
+                                    <i class="fas fa-user-tie"></i> Nombre del Cliente (opcional)
+                                </label>
+                                <input type="text" class="form-control" id="clientName" 
+                                       placeholder="Nombre del cliente">
+                            </div>
+                                                        <div class="col-md-6">
+                                <label for="outputName" class="form-label">
+                                    <i class="fas fa-file-powerpoint"></i> Nombre del Archivo
+                                </label>
+                                <input type="text" class="form-control" id="outputName" 
+                                       placeholder="Propuesta_JLL" value="Propuesta_JLL">
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3 text-center">
+                            <button onclick="mergeSelected()" class="btn btn-success btn-lg" id="mergeBtn" disabled>
+                                <i class="fas fa-magic"></i> Crear Presentación Combinada
+                            </button>
+                            <div class="loading spinner-border spinner-border-sm ms-2" role="status">
+                                <span class="visually-hidden">Procesando...</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Lista de Edificios -->
+                        <div class="row" id="buildingsList">
+            `;
+
+            buildings.forEach((building, index) => {
+                html += `
+                    <div class="col-md-6 col-lg-4 mb-3">
+                        <div class="building-card card h-100" onclick="toggleBuilding('${building.building}', this)">
+                            <div class="card-body">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" 
+                                           value="${building.building}" id="building${index}">
+                                    <label class="form-check-label" for="building${index}">
+                                        <strong><i class="fas fa-building"></i> ${building.building}</strong><br>
+                                        <small class="text-muted">
+                                            <i class="fas fa-file"></i> ${building.filename}<br>
+                                            <i class="fas fa-hdd"></i> ${building.size}
+                                        </small>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            resultsDiv.innerHTML = html;
+            updateMergeButton();
+        }
+
+        // Seleccionar/deseleccionar edificio
+        function toggleBuilding(buildingName, cardElement) {
+            const checkbox = cardElement.querySelector('input[type="checkbox"]');
+            checkbox.checked = !checkbox.checked;
+            
+            if (checkbox.checked) {
+                selectedBuildings.add(buildingName);
+                cardElement.classList.add('selected');
+            } else {
+                selectedBuildings.delete(buildingName);
+                cardElement.classList.remove('selected');
+            }
+            
+            updateMergeButton();
+        }
+
+        // Seleccionar todos
+        function selectAll() {
+            const checkboxes = document.querySelectorAll('#buildingsList input[type="checkbox"]');
+            const cards = document.querySelectorAll('.building-card');
+            
+            checkboxes.forEach((cb, index) => {
+                cb.checked = true;
+                selectedBuildings.add(cb.value);
+                cards[index].classList.add('selected');
+            });
+            
+            updateMergeButton();
+        }
+
+        // Limpiar selección
+        function clearAll() {
+            const checkboxes = document.querySelectorAll('#buildingsList input[type="checkbox"]');
+            const cards = document.querySelectorAll('.building-card');
+            
+            checkboxes.forEach((cb, index) => {
+                cb.checked = false;
+                cards[index].classList.remove('selected');
+            });
+            
+            selectedBuildings.clear();
+            updateMergeButton();
+        }
+
+        // Actualizar botón de combinar
+        function updateMergeButton() {
+            const mergeBtn = document.getElementById('mergeBtn');
+            if (mergeBtn) {
+                mergeBtn.disabled = selectedBuildings.size === 0;
+                mergeBtn.innerHTML = `<i class="fas fa-magic"></i> Crear Presentación (${selectedBuildings.size} edificios)`;
+            }
+        }
+
+        // Combinar presentaciones seleccionadas
+        async function mergeSelected() {
+            if (selectedBuildings.size === 0) {
+                showMessage('⚠️ Selecciona al menos un edificio', 'warning');
+                return;
+            }
+
+            const folderPath = document.getElementById('folderPath').value.trim();
+            const language = document.getElementById('language').value;
+            const clientName = document.getElementById('clientName').value.trim();
+            let outputName = document.getElementById('outputName').value.trim() || 'Propuesta_JLL';
+            
+            // Agregar nombre del cliente si se proporcionó
+            if (clientName) {
+                outputName = `${outputName}_${clientName.replace(/\s+/g, '_')}`;
+            }
+
+            showLoading(true);
+            showMessage('🔄 Combinando presentaciones...', 'info');
+
+            try {
+                const response = await fetch('/merge', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        folder_path: folderPath,
+                        language: language,
+                        buildings: Array.from(selectedBuildings),
+                        output_name: outputName
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    showMessage(data.message, 'success');
+                    showDownloadLink(data.download_url, data.filename);
+                } else {
+                    showMessage('❌ ' + data.error, 'error');
+                }
+                
+            } catch (error) {
+                showMessage('❌ Error procesando: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Mostrar enlace de descarga
+        function showDownloadLink(downloadUrl, filename) {
+            const resultsDiv = document.getElementById('results');
+            const downloadHtml = `
+                <div class="alert alert-success mt-3">
+                    <h5><i class="fas fa-check-circle"></i> ¡Presentación Lista!</h5>
+                    <p>Tu presentación combinada está lista para descargar:</p>
+                    <a href="${downloadUrl}" class="btn btn-success btn-lg" download>
+                        <i class="fas fa-download"></i> Descargar ${filename}
+                    </a>
+                </div>
+            `;
+            resultsDiv.insertAdjacentHTML('afterend', downloadHtml);
+        }
+
+        // Mostrar mensajes de estado
+        function showMessage(message, type) {
+            const statusDiv = document.getElementById('statusMessages');
+            const alertClass = type === 'success' ? 'alert-success' : 
+                              type === 'error' ? 'alert-danger' : 
+                              type === 'warning' ? 'alert-warning' : 'alert-info';
+            
+            statusDiv.innerHTML = `
+                <div class="alert ${alertClass} alert-dismissible fade show" role="alert">
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+            
+            // Auto-hide después de 5 segundos para mensajes de éxito
+            if (type === 'success') {
+                setTimeout(() => {
+                    const alert = statusDiv.querySelector('.alert');
+                    if (alert) alert.remove();
+                }, 5000);
+            }
+        }
+
+        // Mostrar/ocultar indicador de carga
+        function showLoading(show) {
+            const loadingElements = document.querySelectorAll('.loading');
+            loadingElements.forEach(el => {
+                el.style.display = show ? 'inline-block' : 'none';
+            });
+        }
+
+        // Cargar ruta guardada al iniciar
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedPath = localStorage.getItem('jll_folder_path');
+            if (savedPath) {
+                document.getElementById('folderPath').value = savedPath;
+            }
+            
+            // Guardar ruta cuando cambie
+            document.getElementById('folderPath').addEventListener('change', function() {
+                localStorage.setItem('jll_folder_path', this.value);
+            });
+        });
+    </script>
+</body>
+</html>
